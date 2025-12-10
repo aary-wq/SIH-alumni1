@@ -45,7 +45,10 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
   const [eventTime, setEventTime] = useState('')
   const [eventVenue, setEventVenue] = useState('')
   const [eventDescription, setEventDescription] = useState('')
-  const [registrationLink, setRegistrationLink] = useState('')
+  const [posterFile, setPosterFile] = useState<File | null>(null)
+  const [posterPreview, setPosterPreview] = useState<string>('')
+  const [eventMode, setEventMode] = useState<string>('')
+  const [eventFee, setEventFee] = useState<string>('')
   
   // Location specific fields
   const [placeName, setPlaceName] = useState('')
@@ -82,6 +85,20 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
     }
   }
 
+  const handlePosterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Poster size should be less than 5MB')
+        return
+      }
+      setPosterFile(file)
+      const reader = new FileReader()
+      reader.onload = () => setPosterPreview(reader.result as string)
+      reader.readAsDataURL(file)
+    }
+  }
+
   const addTag = () => {
     if (newTag.trim() && !tags.includes(newTag.trim().toLowerCase())) {
       setTags([...tags, newTag.trim().toLowerCase()])
@@ -111,7 +128,8 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
     setEventTime('')
     setEventVenue('')
     setEventDescription('')
-    setRegistrationLink('')
+    setPosterFile(null)
+    setPosterPreview('')
     setPlaceName('')
     setAddress('')
     setFeeling('')
@@ -173,8 +191,11 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
           time: eventTime,
           venue: eventVenue,
           description: eventDescription,
-          registrationLink: registrationLink
+          mode: eventMode || undefined,
+          fee: eventFee ? Number(eventFee) : 0
         }))
+        // attach poster file as 'image' so server multer/cloudinary will store it
+        if (posterFile) formData.append('image', posterFile)
       }
 
       if (selectedCategory === 'location') {
@@ -251,6 +272,8 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
                       </Label>
                       <div className="grid grid-cols-2 gap-3">
                         {categories.map((category) => {
+                          // Hide 'event' category for students
+                          if (category.value === 'event' && user && user.role === 'student') return null
                           const IconComponent = category.icon
                           return (
                             <button
@@ -351,7 +374,7 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
                         </div>
                       )}
 
-                      {selectedCategory === 'event' && (
+          {selectedCategory === 'event' && (
                         <div className="space-y-4">
                           <div className="grid grid-cols-2 gap-4">
                             <div>
@@ -397,6 +420,30 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
                               />
                             </div>
                           </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="eventMode">Mode</Label>
+                              <Select value={eventMode} onValueChange={(v) => setEventMode(v)}>
+                                <SelectTrigger className="mt-1">
+                                  <SelectValue placeholder="Select mode" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="online">Online</SelectItem>
+                                  <SelectItem value="offline">Offline</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="eventFee">Fee (INR)</Label>
+                              <Input
+                                id="eventFee"
+                                type="number"
+                                value={eventFee}
+                                onChange={(e) => setEventFee(e.target.value)}
+                                placeholder="0"
+                              />
+                            </div>
+                          </div>
                           <div>
                             <Label htmlFor="eventDescription">Description</Label>
                             <Textarea
@@ -408,14 +455,28 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
                             />
                           </div>
                           <div>
-                            <Label htmlFor="registrationLink">Registration Link</Label>
+                            <Label htmlFor="posterFile">Event Poster</Label>
                             <Input
-                              id="registrationLink"
-                              type="url"
-                              value={registrationLink}
-                              onChange={(e) => setRegistrationLink(e.target.value)}
-                              placeholder="https://..."
+                              id="posterFile"
+                              type="file"
+                              accept="image/*"
+                              onChange={handlePosterChange}
+                              className="mb-2"
                             />
+                            {posterPreview && (
+                              <div className="relative">
+                                <img src={posterPreview} alt="Poster Preview" className="w-full max-h-64 object-cover rounded-lg" />
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => { setPosterFile(null); setPosterPreview('') }}
+                                  className="absolute top-2 right-2"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}

@@ -1,6 +1,7 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const Post = require("../models/Post");
+const Event = require("../models/Event");
 const User = require("../models/User");
 const cloudinary = require("../config/cloudinary");
 const multer = require("multer");
@@ -69,6 +70,9 @@ router.post("/", authenticateToken, upload.single("image"), async (req, res) => 
       tags: tags ? JSON.parse(tags) : []
     };
 
+    // keep parsed event details available so we can create a canonical Event record
+    let parsedEventDetails = null;
+
     // Handle category-specific data
     switch (category) {
       case "photo":
@@ -79,15 +83,30 @@ router.post("/", authenticateToken, upload.single("image"), async (req, res) => 
         break;
 
       case "event":
+        // Only alumni and admin can create events
+        if (!req.user || !['alumni','admin'].includes(req.user.role)) {
+          return res.status(403).json({ error: 'Only alumni or admin can create events' })
+        }
         if (!eventDetails) {
           return res.status(400).json({ error: "Event details are required for event posts" });
         }
-        const parsedEventDetails = JSON.parse(eventDetails);
-        if (!parsedEventDetails.title || !parsedEventDetails.date || !parsedEventDetails.time || !parsedEventDetails.venue) {
+        parsedEventDetails = JSON.parse(eventDetails);
+        // If a file was uploaded (poster), multer/cloudinary will put the path on req.file.path
+        if (req.file && req.file.path) {
+          parsedEventDetails.posterUrl = req.file.path;
+        }
+        // venue required only for offline events; mode can be provided or inferred
+        const inferredMode = parsedEventDetails.mode || (parsedEventDetails.venue ? 'offline' : 'online')
+        if (!parsedEventDetails.title || !parsedEventDetails.date || !parsedEventDetails.time) {
           return res.status(400).json({ 
-            error: "Event title, date, time, and venue are required" 
+            error: "Event title, date, and time are required" 
           });
         }
+        if (inferredMode === 'offline' && !parsedEventDetails.venue) {
+          return res.status(400).json({ error: 'Venue is required for offline events' })
+        }
+        // normalize fee (ensure numeric even if '0' or empty)
+        parsedEventDetails.fee = Number(parsedEventDetails.fee || 0)
         postData.eventDetails = parsedEventDetails;
         break;
 
@@ -116,16 +135,50 @@ router.post("/", authenticateToken, upload.single("image"), async (req, res) => 
         break;
     }
 
+    // If this post is an event post, create the canonical Event first so the
+    // saved Post can include the eventId and posterUrl immediately in the response.
+    let createdEvent = null;
+    if (category === 'event' && parsedEventDetails) {
+      try {
+        const eventPayload = {
+          title: parsedEventDetails.title,
+          date: new Date(parsedEventDetails.date),
+          mode: parsedEventDetails.mode || (parsedEventDetails.venue ? 'offline' : 'online'),
+          venue: parsedEventDetails.venue,
+          fee: parsedEventDetails.fee ? Number(parsedEventDetails.fee) : 0,
+          posterUrl: parsedEventDetails.posterUrl || null,
+          createdBy: req.user._id,
+          registeredUsers: [],
+          donationAccepted: parsedEventDetails.donationAccepted === true || parsedEventDetails.donationAccepted === 'true',
+          description: parsedEventDetails.description || content || ''
+        };
+
+        const eventDoc = new Event(eventPayload);
+        createdEvent = await eventDoc.save();
+
+        // attach eventId into the parsedEventDetails so postData includes it
+        parsedEventDetails.eventId = createdEvent._id;
+        postData.eventDetails = parsedEventDetails;
+      } catch (evtErr) {
+        console.error('Failed to create Event document for event post:', evtErr);
+        // If event creation fails, we still allow creating the post without eventId
+        postData.eventDetails = parsedEventDetails;
+      }
+    }
+
     const post = new Post(postData);
     await post.save();
 
     // Populate author information
     await post.populate('author', 'firstName lastName universityName role profileUrl');
 
-    res.status(201).json({
+    const responsePayload = {
       message: "Post created successfully",
       post
-    });
+    };
+    if (createdEvent) responsePayload.event = createdEvent;
+
+    res.status(201).json(responsePayload);
 
   } catch (error) {
     console.error("Error creating post:", error);
@@ -456,6 +509,12 @@ router.put("/:id", authenticateToken, upload.single("image"), async (req, res) =
       case "event":
         if (eventDetails) {
           const parsedEventDetails = JSON.parse(eventDetails);
+          // If a new poster was uploaded during edit, ensure it's stored
+          if (req.file && req.file.path) {
+            parsedEventDetails.posterUrl = req.file.path;
+          }
+          // normalize fee
+          if (parsedEventDetails.fee) parsedEventDetails.fee = Number(parsedEventDetails.fee)
           post.eventDetails = { ...post.eventDetails, ...parsedEventDetails };
         }
         break;

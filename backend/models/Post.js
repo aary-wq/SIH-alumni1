@@ -59,6 +59,16 @@ const postSchema = new mongoose.Schema(
       },
       description: String,
       registrationLink: String,
+<<<<<<< HEAD
+=======
+      posterUrl: String,
+        mode: { type: String, enum: ["offline", "online"] },
+        fee: { type: Number, default: 0 },
+      eventId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Event'
+      }
+>>>>>>> 71c6fbd01476af0199c3a58bea24914d07daee4b
     },
     
     // Location category specific fields

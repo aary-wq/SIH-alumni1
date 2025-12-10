@@ -26,6 +26,8 @@ import {
   Search,
   Settings,
   FileText,
+  Gift,
+  Heart,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import Link from "next/link";
@@ -34,25 +36,26 @@ import { cn } from "@/lib/utils";
 import AvatarDropdown from "@/components/ui/AvtarDropDown";
 
 const getNavigation = (counts: any) => [
-  { name: "Feed", href: "/dashboard", icon: Home },
+  // Core feed/profile actions
   { name: "My Posts", href: "/dashboard/profile/my-posts", icon: FileText },
-  { name: "My Network", href: "/dashboard/network", icon: Users, badge: counts.connections?.toString() },
   {
     name: "Messages",
     href: "/dashboard/messages",
     icon: MessageCircle,
     badge: counts.unreadMessages?.toString(),
   },
-  {
-    name: "Notifications",
-    href: "/dashboard/notifications",
-    icon: Bell,
-    badge: counts.unreadNotifications?.toString(),
-  },
-  { name: "Events", href: "/dashboard/events", icon: Calendar, badge: counts.upcomingEvents?.toString() },
   { name: "Jobs", href: "/dashboard/jobs", icon: Briefcase, badge: counts.availableJobs?.toString() },
+
+  // Networking & community
+  { name: "My Network", href: "/dashboard/network", icon: Home },
+  { name: "Notifications", href: "/dashboard/notifications", icon: Bell, badge: counts.unreadNotifications?.toString() },
   { name: "StoryTimeline", href: "/dashboard/story-timeline", icon: Clock },
   { name: "AI Hub", href: "/dashboard/ai-hub", icon: Brain },
+
+  // Events / directory / mentoring
+  { name: "Events", href: "/dashboard/events", icon: Calendar },
+  { name: "Directory", href: "/dashboard/directory", icon: Search },
+  { name: "Mentorship", href: "/dashboard/mentorship", icon: Gift },
 ];
 
 export default function DashboardLayout({
@@ -73,7 +76,7 @@ export default function DashboardLayout({
     availableJobs: 0,
   });
   const pathname = usePathname();
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout } = useAuth() as any;
 
   const fetchUserStats = async () => {
     try {
@@ -90,7 +93,7 @@ export default function DashboardLayout({
       }
     } catch (error) {
       // Silently fail if backend is not running
-      console.warn("Backend not available:", error.message);
+      console.warn("Backend not available:", (error as any)?.message ?? error);
     }
   };
 
@@ -109,7 +112,7 @@ export default function DashboardLayout({
       }
     } catch (error) {
       // Silently fail if backend is not running
-      console.warn("Backend not available:", error.message);
+      console.warn("Backend not available:", (error as any)?.message ?? error);
     }
   };
 
@@ -127,7 +130,25 @@ export default function DashboardLayout({
     }
   }, [user]);
 
-  const navigation = getNavigation(navCounts);
+  let navigation = getNavigation(navCounts);
+
+  // Feed should be admin-only. If user is admin, add Feed at the top and admin campaigns.
+  if (user && user.role === "admin") {
+    navigation.unshift({ name: "Feed", href: "/dashboard", icon: Home });
+    navigation.push({ name: "Admin Campaigns", href: "/dashboard/admin-campaigns", icon: Gift });
+
+    // For admins we want to remove some items that are only relevant to regular users
+    const removeForAdmin = ["My Network", "Notifications", "StoryTimeline", "AI Hub"];
+    navigation = navigation.filter((item) => !removeForAdmin.includes(item.name));
+  }
+
+  // Show College Development Fund link only for alumni (explicit requirement)
+  if (user && user.role === 'alumni') {
+    // push near the end so it's visible but not mixed with admin actions
+    navigation.push({ name: 'College Fund', href: '/dashboard/college-fund', icon: Heart });
+  }
+  // show alumni-only link for College Development Fund
+
 
   return (
     <ProtectedRoute>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -44,6 +44,8 @@ interface Post {
     venue: string
     description?: string
     registrationLink?: string
+    posterUrl?: string
+    eventId?: string
   }
   locationDetails?: {
     placeName: string
@@ -96,6 +98,10 @@ export default function PostCard({
   const [newComment, setNewComment] = useState('')
   const [comments, setComments] = useState(post.comments || [])
   const [isCommenting, setIsCommenting] = useState(false)
+  // If the post links to a canonical Event, fetch its latest data so we can show poster & registration state
+  const [eventInfo, setEventInfo] = useState<any>(null)
+  const [showImageModal, setShowImageModal] = useState(false)
+  const [modalImageSrc, setModalImageSrc] = useState<string | null>(null)
 
   const isOwner = currentUserId === post.author._id
 
@@ -200,6 +206,35 @@ export default function PostCard({
     }
   }
 
+  useEffect(() => {
+    // If this is an event post and has an eventId, fetch the canonical event to surface posterUrl
+    const fetchEvent = async () => {
+      try {
+  const rawId: any = post.eventDetails?.eventId
+        if (!rawId) return
+        let id: any = rawId
+        if (typeof rawId === 'object') {
+          // Try common ObjectId shapes
+          id = rawId._id ? rawId._id : (rawId.toString ? rawId.toString() : null)
+        }
+        if (!id) return
+        const token = localStorage.getItem('token')
+        const res = await fetch(`http://localhost:4000/api/events/${id}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        })
+        if (!res.ok) return
+        let json = null
+        try { json = await res.json() } catch (e) { return }
+        if (json && json.event) setEventInfo(json.event)
+      } catch (err) {
+        // silent
+        console.debug('Could not fetch canonical event for post', err)
+      }
+    }
+
+    fetchEvent()
+  }, [post.eventDetails])
+
   const getCategoryInfo = () => {
     switch (post.category) {
       case 'event':
@@ -212,22 +247,73 @@ export default function PostCard({
               </span>
             </div>
             <div className="text-sm space-y-1">
+              {/* Event poster if present. Fallback to post.imageUrl when posterUrl isn't available */}
+              {((eventInfo && eventInfo.posterUrl) || (post.eventDetails as any).posterUrl || post.imageUrl) && (
+                <div className="rounded-lg overflow-hidden mb-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const src = (eventInfo && eventInfo.posterUrl) || (post.eventDetails as any).posterUrl || post.imageUrl
+                      setModalImageSrc(src || null)
+                      setShowImageModal(true)
+                    }}
+                    className="w-full block text-left"
+                    aria-label="Open event poster"
+                  >
+                    <img
+                      src={(eventInfo && eventInfo.posterUrl) || (post.eventDetails as any).posterUrl || post.imageUrl}
+                      alt={post.eventDetails.title}
+                      className="w-full max-h-64 object-cover rounded-lg"
+                    />
+                  </button>
+                </div>
+              )}
               <p><strong>Date:</strong> {new Date(post.eventDetails.date).toLocaleDateString()}</p>
               <p><strong>Time:</strong> {post.eventDetails.time}</p>
               <p><strong>Venue:</strong> {post.eventDetails.venue}</p>
               {post.eventDetails.description && (
                 <p><strong>Description:</strong> {post.eventDetails.description}</p>
               )}
-              {post.eventDetails.registrationLink && (
-                <a 
-                  href={post.eventDetails.registrationLink} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 mt-2"
-                >
-                  Register Now <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
+              {/* Show Register button when there is a linked canonical eventId, otherwise fall back to registrationLink if provided */}
+              {(() => {
+                // Normalize eventId which might be a string, ObjectId, or populated object
+                let rawEventId: any = post.eventDetails?.eventId;
+                if (rawEventId && typeof rawEventId === 'object') {
+                  // If Mongoose populated or stored as object, try common properties
+                  rawEventId = rawEventId._id ? rawEventId._id : rawEventId.toString();
+                }
+                const eventId = rawEventId ? String(rawEventId) : null;
+
+                if (eventId) {
+                  return (
+                    <div className="mt-2">
+                      <a href={`/dashboard/events/register/${eventId}`} className="inline-block">
+                        <Button
+                          size="sm"
+                          className="inline-flex items-center gap-2 text-white bg-blue-600 hover:bg-blue-700"
+                        >
+                          Register
+                        </Button>
+                      </a>
+                    </div>
+                  )
+                }
+
+                if (post.eventDetails.registrationLink) {
+                  return (
+                    <a 
+                      href={post.eventDetails.registrationLink} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 mt-2"
+                    >
+                      Register Now <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )
+                }
+
+                return null
+              })()}
             </div>
           </div>
         ) : null
@@ -327,11 +413,18 @@ export default function PostCard({
           {/* Post Image */}
           {post.category === 'photo' && post.imageUrl && (
             <div className="rounded-lg overflow-hidden mb-3">
-              <img 
-                src={post.imageUrl} 
-                alt="Post image" 
-                className="w-full max-h-96 object-cover"
-              />
+              <button
+                type="button"
+                onClick={() => { setModalImageSrc(post.imageUrl || null); setShowImageModal(true) }}
+                className="w-full block text-left"
+                aria-label="Open image"
+              >
+                <img 
+                  src={post.imageUrl} 
+                  alt="Post image" 
+                  className="w-full max-h-96 object-cover"
+                />
+              </button>
             </div>
           )}
 
@@ -452,6 +545,19 @@ export default function PostCard({
         postContent={post.content}
         onShareSuccess={handleShareSuccess}
       />
+      {/* Image modal for full-size poster/photo */}
+      <Dialog open={showImageModal} onOpenChange={(v) => { if (!v) { setShowImageModal(false); setModalImageSrc(null) } }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] p-0 bg-transparent shadow-none">
+          <DialogHeader>
+            <DialogTitle className="sr-only">Image preview</DialogTitle>
+          </DialogHeader>
+          <div className="w-full h-full flex items-center justify-center">
+            {modalImageSrc && (
+              <img src={modalImageSrc} alt="Full size" className="max-w-full max-h-[90vh] object-contain rounded-lg" />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

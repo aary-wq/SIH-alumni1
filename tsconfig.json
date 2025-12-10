@@ -34,7 +34,7 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts"
-  ],
+, "app/dashboard/network/page.js", "app/dashboard/notifications/page.js", "app/auth/login/page.tsx"  ],
   "exclude": [
     "node_modules"
   ]

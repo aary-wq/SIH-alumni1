@@ -6,6 +6,7 @@ const eventSchema = new mongoose.Schema(
     date: { type: Date, required: true },
     mode: { type: String, enum: ["offline", "online"], required: true },
     venue: { type: String, trim: true }, 
+  fee: { type: Number, default: 0 },
     posterUrl: { type: String }, 
     donationAccepted: { type: Boolean, default: false }, 
     description: { type: String, trim: true, required: true },
@@ -16,10 +17,12 @@ const eventSchema = new mongoose.Schema(
     },
     registeredUsers: [
       {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User", 
-      },
-      
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        paid: { type: Boolean, default: false },
+        txHash: { type: String },
+        amount: { type: Number, default: 0 },
+        registeredAt: { type: Date, default: Date.now }
+      }
     ],
   },
   { timestamps: true }

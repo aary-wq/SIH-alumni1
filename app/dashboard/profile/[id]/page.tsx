@@ -31,6 +31,9 @@ interface TimelineStory {
 
 export default function ProfilePage() {
   const params = useParams();
+  // In newer Next.js versions `params` may be a Promise-like value; unwrap safely
+  // and avoid accessing `params.id` directly to prevent the React.use() warning.
+  const id = params && typeof params === 'object' ? (params as any).id : undefined;
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,7 +66,7 @@ export default function ProfilePage() {
   const fetchProfile = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:4000/api/users/profile/${params.id}`, {
+      const res = await fetch(`http://localhost:4000/api/users/profile/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       
@@ -88,7 +91,7 @@ export default function ProfilePage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ 
-          recipientId: params.id, 
+          recipientId: id, 
           message: "Hi! I'd like to connect with you." 
         }),
       });
@@ -99,10 +102,10 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
-    if (params.id) {
+    if (id) {
       fetchProfile();
     }
-  }, [params.id]);
+  }, [id]);
 
   if (loading) return <div className="p-6">Loading...</div>;
   if (!profile) return <div className="p-6">Profile not found</div>;
@@ -184,7 +187,7 @@ export default function ProfilePage() {
           </div>
         </CardHeader>
         <CardContent>
-          <PostSummaryTimeline userId={params.id as string} />
+          <PostSummaryTimeline userId={id as string} />
         </CardContent>
       </Card>
     </div>
