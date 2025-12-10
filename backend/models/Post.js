@@ -58,7 +58,7 @@ const postSchema = new mongoose.Schema(
         }
       },
       description: String,
-      registrationLink: String
+      registrationLink: String,
     },
     
     // Location category specific fields
